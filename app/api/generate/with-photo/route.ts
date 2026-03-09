@@ -4,23 +4,26 @@ import { generateImageWithPhoto } from "@/lib/gemini";
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const photo = formData.get("photo") as File | null;
+    const photoFiles = formData.getAll("photo") as File[];
     const prompt = formData.get("prompt") as string | null;
     const aspectRatio = (formData.get("aspectRatio") as string) || undefined;
     const imageSize = (formData.get("imageSize") as string) || undefined;
 
-    if (!photo || !prompt) {
+    if (photoFiles.length === 0 || !prompt) {
       return NextResponse.json(
-        { error: "photo and prompt are required" },
+        { error: "At least one photo and prompt are required" },
         { status: 400 },
       );
     }
 
-    const arrayBuffer = await photo.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const mimeType = photo.type || "image/jpeg";
+    const photos = await Promise.all(
+      photoFiles.map(async (file) => ({
+        buffer: Buffer.from(await file.arrayBuffer()),
+        mimeType: file.type || "image/jpeg",
+      })),
+    );
 
-    const result = await generateImageWithPhoto(buffer, mimeType, prompt, {
+    const result = await generateImageWithPhoto(photos, prompt, {
       aspectRatio,
       imageSize,
     });

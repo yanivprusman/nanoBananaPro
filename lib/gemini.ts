@@ -38,38 +38,32 @@ export async function generateImage(
 }
 
 /**
- * Generate an image from a photo + text prompt using Gemini Nano Banana Pro.
+ * Generate an image from one or more photos + text prompt using Gemini Nano Banana Pro.
  */
 export async function generateImageWithPhoto(
-  photoBuffer: Buffer,
-  mimeType: string,
+  photos: Array<{ buffer: Buffer; mimeType: string }>,
   prompt: string,
   options: GenerateOptions = {},
 ): Promise<Buffer> {
   const { aspectRatio = "3:4", imageSize = "1K" } = options;
-  const base64Photo = photoBuffer.toString("base64");
+
+  const inputParts = photos.map((photo) => ({
+    inlineData: { mimeType: photo.mimeType, data: photo.buffer.toString("base64") },
+  }));
 
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-image-preview",
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { inlineData: { mimeType, data: base64Photo } },
-          { text: prompt },
-        ],
-      },
-    ],
+    contents: [{ role: "user", parts: [...inputParts, { text: prompt }] }],
     config: {
       responseModalities: ["TEXT", "IMAGE"],
       imageConfig: { aspectRatio, imageSize },
     },
   });
 
-  const parts = response.candidates?.[0]?.content?.parts;
-  if (!parts) throw new Error("No response from Gemini");
+  const responseParts = response.candidates?.[0]?.content?.parts;
+  if (!responseParts) throw new Error("No response from Gemini");
 
-  for (const part of parts) {
+  for (const part of responseParts) {
     if (part.inlineData?.data) {
       return Buffer.from(part.inlineData.data, "base64");
     }
