@@ -1,10 +1,43 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface GenerateOptions {
   aspectRatio?: string;
   imageSize?: string;
+}
+
+// Pull the image bytes out of a Gemini response, or throw with the REAL
+// reason it's missing (safety block, finish reason, or the model's own text
+// explanation) instead of a generic "no response".
+function extractImage(response: GenerateContentResponse): Buffer {
+  const blockReason = response.promptFeedback?.blockReason;
+  if (blockReason) {
+    throw new Error(`Gemini blocked the request: ${blockReason}`);
+  }
+
+  const candidate = response.candidates?.[0];
+  const parts = candidate?.content?.parts;
+  const textPart = parts?.find((p) => p.text)?.text?.trim();
+
+  const imagePart = parts?.find((p) => p.inlineData?.data);
+  if (imagePart?.inlineData?.data) {
+    return Buffer.from(imagePart.inlineData.data, "base64");
+  }
+
+  const finishReason = candidate?.finishReason;
+  const detail = [
+    finishReason && finishReason !== "STOP" ? `finish reason: ${finishReason}` : null,
+    textPart ? `model said: ${textPart}` : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  console.error("Gemini returned no image.", JSON.stringify({
+    finishReason,
+    safetyRatings: candidate?.safetyRatings,
+    text: textPart,
+  }));
+  throw new Error(detail ? `Gemini returned no image (${detail})` : "Gemini returned no image");
 }
 
 /**
@@ -25,16 +58,7 @@ export async function generateImage(
     },
   });
 
-  const parts = response.candidates?.[0]?.content?.parts;
-  if (!parts) throw new Error("No response from Gemini");
-
-  for (const part of parts) {
-    if (part.inlineData?.data) {
-      return Buffer.from(part.inlineData.data, "base64");
-    }
-  }
-
-  throw new Error("No image in Gemini response");
+  return extractImage(response);
 }
 
 /**
@@ -60,14 +84,5 @@ export async function generateImageWithPhoto(
     },
   });
 
-  const responseParts = response.candidates?.[0]?.content?.parts;
-  if (!responseParts) throw new Error("No response from Gemini");
-
-  for (const part of responseParts) {
-    if (part.inlineData?.data) {
-      return Buffer.from(part.inlineData.data, "base64");
-    }
-  }
-
-  throw new Error("No image in Gemini response");
+  return extractImage(response);
 }
