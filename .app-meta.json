@@ -1,4 +1,7 @@
 {
   "description": "AI image generation service (Gemini Nano Banana Pro)",
-  "icon": "FlaskConical"
+  "icon": "FlaskConical",
+  "keepRunning": [
+    "dev"
+  ]
 }
